@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PC Monitoring Agent</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div>
+          <h1>PC Monitoring Agent</h1>
+          <p class="muted">Realtime dashboard (WebSocket metrics)</p>
+        </div>
+        <div class="status">
+          <span class="label">Last ping</span>
+          <span id="last-ping">--</span>
+        </div>
+      </header>
+
+      <main class="grid">
+        <section class="card">
+          <h2>CPU</h2>
+          <div class="value" id="cpu-value">-- %</div>
+          <div class="sub">Average usage</div>
+        </section>
+
+        <section class="card">
+          <h2>RAM</h2>
+          <div class="value" id="ram-percent">RAM --%</div>
+          <div class="sub" id="ram-details">N/A</div>
+        </section>
+
+        <section class="card">
+          <h2>GPU</h2>
+          <div class="value" id="gpu-value">-- %</div>
+          <div class="sub">Usage</div>
+        </section>
+
+        <section class="card">
+          <h2>NET</h2>
+          <div class="value" id="net-value">-- / -- kbps</div>
+          <div class="sub">Send: <span id="net-send">--</span> kbps</div>
+          <div class="sub">Receive: <span id="net-receive">--</span> kbps</div>
+          <div class="chart">
+            <div class="chart-label">Send (last 60s)</div>
+            <canvas id="net-send-chart" class="net-chart" width="240" height="60"></canvas>
+          </div>
+          <div class="chart">
+            <div class="chart-label">Receive (last 60s)</div>
+            <canvas id="net-recv-chart" class="net-chart" width="240" height="60"></canvas>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Temps</h2>
+          <div class="value" id="temp-value">
+            <span id="cpu-temp">--</span> / <span id="gpu-temp">--</span>
+          </div>
+          <div class="sub">CPU / GPU</div>
+          <div class="sub" id="cpu-temp-source" hidden></div>
+        </section>
+      </main>
+
+      <footer class="footer muted">
+        <span>Connected: <span id="connected-status">no</span></span>
+        <span>Last update: <span id="last-update">--</span></span>
+      </footer>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
