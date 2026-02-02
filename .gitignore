@@ -1,0 +1,19 @@
+# Build artifacts
+bin/
+obj/
+dist/
+
+# IDE/editor
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Agent instructions
+AGENT.md
