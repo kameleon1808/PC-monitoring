@@ -84,6 +84,11 @@ h2 {
   text-align: right;
 }
 
+.meta-value {
+  color: #ffffff;
+  font-weight: 700;
+}
+
 .meta-label {
   font-size: 11px;
   text-transform: uppercase;
@@ -158,6 +163,8 @@ h2 {
 .net-card {
   grid-area: net;
   height: 209px;
+  padding: 10px 12px;
+  gap: 6px;
 }
 
 .temps-card {
@@ -253,13 +260,20 @@ h2 {
 .net-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 .net-stat {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+}
+
+.net-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .net-label {
@@ -287,6 +301,21 @@ h2 {
   border-radius: 10px;
   background: #0c111b;
   border: 1px solid #212a3b;
+}
+
+.net-card .net-chart {
+  height: 48px;
+}
+
+.net-ram {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 15px 0;
+}
+
+.net-ram h2 {
+  font-size: 12px;
 }
 
 .net-chart-large {

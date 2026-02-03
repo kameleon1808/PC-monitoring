@@ -15,11 +15,11 @@
         <div class="header-meta">
           <div class="meta-card">
             <span class="meta-label">Last ping</span>
-            <span id="last-ping">--</span>
+            <span id="last-ping" class="meta-value">--</span>
           </div>
           <div class="meta-card">
             <span class="meta-label">Last update</span>
-            <span id="last-update">--</span>
+            <span id="last-update" class="meta-value">--</span>
           </div>
           <div class="meta-card status-card">
             <span class="meta-label">Status</span>
@@ -38,16 +38,7 @@
           </div>
         </section>
 
-        <section class="panel ram-card">
-          <h2>RAM Usage</h2>
-          <div class="ram-bar">
-            <div class="ram-bar-fill" id="ram-bar-fill"></div>
-          </div>
-          <div class="ram-details">
-            <span id="ram-details">N/A</span>
-            <span class="ram-percent" id="ram-percent">--%</span>
-          </div>
-        </section>
+        <section class="panel ram-card"></section>
 
         <section class="panel gpu-card">
           <h2>GPU Usage</h2>
@@ -65,14 +56,28 @@
           </div>
           <div class="net-row">
             <div class="net-stat">
-              <span class="net-label">Send</span>
-              <span class="net-value"><span id="net-send">--</span> <span class="unit">kbps</span></span>
+              <div class="net-line">
+                <span class="net-label">Send</span>
+                <span class="net-value"><span id="net-send">--</span> <span class="unit">kbps</span></span>
+              </div>
               <canvas id="net-send-chart" class="net-chart" width="240" height="60"></canvas>
             </div>
             <div class="net-stat">
-              <span class="net-label">Receive</span>
-              <span class="net-value"><span id="net-receive">--</span> <span class="unit">kbps</span></span>
+              <div class="net-line">
+                <span class="net-label">Receive</span>
+                <span class="net-value"><span id="net-receive">--</span> <span class="unit">kbps</span></span>
+              </div>
               <canvas id="net-recv-chart" class="net-chart" width="240" height="60"></canvas>
+            </div>
+          </div>
+          <div class="net-ram">
+            <h2>RAM Usage</h2>
+            <div class="ram-bar">
+              <div class="ram-bar-fill" id="ram-bar-fill"></div>
+            </div>
+            <div class="ram-details">
+              <span id="ram-details">N/A</span>
+              <span class="ram-percent" id="ram-percent">--%</span>
             </div>
           </div>
         </section>
