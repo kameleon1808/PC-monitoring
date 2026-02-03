@@ -74,10 +74,19 @@ No. Data stays within the local network.
 netsh advfirewall firewall add rule name="PC Monitoring Agent" dir=in action=allow protocol=TCP localport=8787
 ```
 
-- **Temperatures are `N/A`**: run as Admin or verify sensor support on your hardware.
+- **Temperatures are `N/A` or `Warming`**: wait ~10 seconds after start; run as Admin or verify sensor support on your hardware.
+- **Need more CPU temp details**: open `http://localhost:8787/api/cpu-temp-debug` to see selected sensor and warm-up state.
 - **GPU usage is `N/A`**: not supported on all GPUs/drivers.
 - **Wrong network adapter**: the agent picks the most active one; disable other adapters or generate traffic on the desired one.
 - **Cannot connect**: check the port and verify the IP address.
+
+## CPU Temperature limitations on Windows
+In some setups Windows can block vulnerable drivers (WinRing0 / Vulnerable Driver Blocklist / Core Isolation), which can prevent CPU temps via LibreHardwareMonitor.
+
+Options:
+- **LHM**: best accuracy when the driver is allowed.
+- **External provider**: recommended if LHM is blocked (e.g., HWiNFO shared memory).
+- **WMI ThermalZone**: approximate fallback only.
 
 ## Security
 - The app does not send data to the internet.

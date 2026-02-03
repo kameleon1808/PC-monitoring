@@ -77,6 +77,7 @@ Settings are in `src/Agent/appsettings.json` and can be overridden by env vars:
 - `MONITOR_HW_INTERVAL_MS` (default `2000`)
 - `MONITOR_ALLOW_LOCAL_NETWORK_CORS` (default `false`)
 - `MONITOR_ADAPTIVE_NOCLIENTS` (default `false`)
+- `CPU_TEMP_PROVIDER` (default `lhm`, options: `lhm|wmi|external`)
 
 Example:
 
@@ -130,6 +131,25 @@ Base URL: `http://<host>:<port>`
 }
 ```
 
+**GET `/api/cpu-temp-debug`** (debug)
+
+```json
+{
+  "ok": true,
+  "cpuTemp": {
+    "tempC": 54.2,
+    "source": "CPU Package",
+    "status": "ok",
+    "provider": "lhm",
+    "details": {
+      "cpuTempSensorsFound": 15,
+      "cpuTempSensorsWithValue": 10,
+      "selectedSensorName": "CPU Package"
+    }
+  }
+}
+```
+
 **WebSocket `/ws`**
 - URL: `ws://<host>:<port>/ws`
 - Message format: `{ "type": "...", "data": { ... } }`
@@ -139,10 +159,17 @@ Base URL: `http://<host>:<port>`
   - `series` (periodic with series)
 
 ## Troubleshooting
-- **Temps show `N/A`**: run as Admin or check sensor support on your hardware.
+- **Temps show `N/A` or `Warming`**: wait ~10 seconds after start; run as Admin or check sensor support on your hardware.
 - **CPU temp still missing**: use `/api/sensors` to verify temperature sensors exist.
 - **GPU usage is `N/A`**: not supported on all GPUs/drivers.
 - **Cannot connect from tablet**: open firewall port 8787 or enable **Allow LAN access** in installer.
+
+## CPU Temperature limitations on Windows
+- Windows may block vulnerable drivers (WinRing0 / Vulnerable Driver Blocklist / Core Isolation), so CPU temps can be unavailable in LHM.
+- Options:
+  - **LHM**: best accuracy when the driver is allowed.
+  - **External provider**: recommended if LHM is blocked (e.g., HWiNFO shared memory).
+  - **WMI ThermalZone**: approximate fallback only.
 
 ## Roadmap
 - Tray app and elevated autostart

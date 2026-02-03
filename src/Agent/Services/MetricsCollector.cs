@@ -1,14 +1,22 @@
 using System.Diagnostics;
 using System.Threading;
+using Agent.Services.CpuTempProviders;
 
 namespace Agent.Services;
 
 public sealed class MetricsCollector : BackgroundService
 {
     private const int SeriesLength = 60;
+    private const string CpuTempProviderLhm = "lhm";
+    private const string CpuTempProviderWmi = "wmi";
+    private const string CpuTempProviderExternal = "external";
     private readonly ILogger<MetricsCollector> _logger;
     private readonly HardwareMonitorService _hardwareMonitor;
     private readonly RuntimeStats _runtimeStats;
+    private readonly LhmCpuTempProvider _lhmCpuTempProvider;
+    private readonly WmiThermalZoneCpuTempProvider _wmiCpuTempProvider;
+    private readonly ExternalCpuTempProvider _externalCpuTempProvider;
+    private readonly string _cpuTempProvider;
     private readonly TimeSpan _baseInterval;
     private readonly TimeSpan _noClientInterval;
     private readonly bool _adaptiveNoClientInterval;
@@ -27,11 +35,16 @@ public sealed class MetricsCollector : BackgroundService
     private readonly string? _totalMemoryError;
 
     public MetricsCollector(ILogger<MetricsCollector> logger, HardwareMonitorService hardwareMonitor, RuntimeStats runtimeStats,
-        MonitorSettings settings)
+        LhmCpuTempProvider lhmCpuTempProvider, WmiThermalZoneCpuTempProvider wmiCpuTempProvider,
+        ExternalCpuTempProvider externalCpuTempProvider, MonitorSettings settings)
     {
         _logger = logger;
         _hardwareMonitor = hardwareMonitor;
         _runtimeStats = runtimeStats;
+        _lhmCpuTempProvider = lhmCpuTempProvider;
+        _wmiCpuTempProvider = wmiCpuTempProvider;
+        _externalCpuTempProvider = externalCpuTempProvider;
+        _cpuTempProvider = settings.CpuTempProvider;
         _baseInterval = TimeSpan.FromMilliseconds(settings.MetricsIntervalMs);
         _noClientInterval = TimeSpan.FromMilliseconds(settings.MetricsIntervalNoClientsMs);
         _adaptiveNoClientInterval = settings.AdaptiveUpdateNoClients;
@@ -50,6 +63,10 @@ public sealed class MetricsCollector : BackgroundService
                 CpuPercent = _latestState.CpuPercent,
                 CpuTempC = _latestState.CpuTempC,
                 CpuTempSource = _latestState.CpuTempSource,
+                CpuTempStatus = _latestState.CpuTempStatus,
+                CpuTempProvider = _latestState.CpuTempProvider,
+                CpuTempHint = _latestState.CpuTempHint,
+                CpuTempDetails = _latestState.CpuTempDetails,
                 GpuUsagePercent = _latestState.GpuUsagePercent,
                 GpuTempC = _latestState.GpuTempC,
                 RamUsagePercent = _latestState.RamUsagePercent,
@@ -71,13 +88,14 @@ public sealed class MetricsCollector : BackgroundService
         await InitializeNetworkCountersAsync(errors, stoppingToken);
         var initStopwatch = Stopwatch.StartNew();
         var hardwareMetrics = _hardwareMonitor.GetLatestMetrics();
+        var cpuTempResult = await ReadCpuTempResultAsync(errors, stoppingToken);
         int? ramUsagePercent;
         int? ramUsedMb;
         int? ramTotalMb;
         ReadRamMetrics(errors, out ramUsagePercent, out ramUsedMb, out ramTotalMb);
         UpdateSnapshot(ReadCpuPercent(errors), ReadNetKbps(_netSentCounter, "Bytes Sent/sec", errors),
             ReadNetKbps(_netReceivedCounter, "Bytes Received/sec", errors), ramUsagePercent, ramUsedMb, ramTotalMb,
-            hardwareMetrics, errors);
+            hardwareMetrics, cpuTempResult, errors);
         initStopwatch.Stop();
         _runtimeStats.RecordTick(DateTimeOffset.UtcNow, initStopwatch.Elapsed.TotalMilliseconds);
 
@@ -91,9 +109,10 @@ public sealed class MetricsCollector : BackgroundService
                 var netSendKbps = ReadNetKbps(_netSentCounter, "Bytes Sent/sec", errors);
                 var netReceiveKbps = ReadNetKbps(_netReceivedCounter, "Bytes Received/sec", errors);
                 var hardwareSnapshot = _hardwareMonitor.GetLatestMetrics();
+                var cpuTempSnapshot = await ReadCpuTempResultAsync(errors, stoppingToken);
                 ReadRamMetrics(errors, out ramUsagePercent, out ramUsedMb, out ramTotalMb);
                 UpdateSnapshot(cpuPercent, netSendKbps, netReceiveKbps, ramUsagePercent, ramUsedMb, ramTotalMb,
-                    hardwareSnapshot, errors);
+                    hardwareSnapshot, cpuTempSnapshot, errors);
                 stopwatch.Stop();
                 _runtimeStats.RecordTick(DateTimeOffset.UtcNow, stopwatch.Elapsed.TotalMilliseconds);
                 await Task.Delay(GetCurrentInterval(), stoppingToken);
@@ -364,16 +383,56 @@ public sealed class MetricsCollector : BackgroundService
         return _baseInterval;
     }
 
+    private async Task<CpuTempResult> ReadCpuTempResultAsync(List<string> errors, CancellationToken token)
+    {
+        CpuTempResult result;
+        try
+        {
+            result = await SelectCpuTempProvider().GetAsync(token);
+        }
+        catch (Exception ex)
+        {
+            errors.Add($"CPU temp provider failed: {ex.Message}");
+            result = new CpuTempResult
+            {
+                TempC = null,
+                Status = "no_values",
+                Hint = null,
+                Provider = _cpuTempProvider
+            };
+        }
+
+        return result;
+    }
+
+    private ICpuTempProvider SelectCpuTempProvider()
+    {
+        return _cpuTempProvider switch
+        {
+            CpuTempProviderWmi => _wmiCpuTempProvider,
+            CpuTempProviderExternal => _externalCpuTempProvider,
+            _ => _lhmCpuTempProvider
+        };
+    }
+
     private void UpdateSnapshot(int? cpuPercent, int netSendKbps, int netReceiveKbps, int? ramUsagePercent,
-        int? ramUsedMb, int? ramTotalMb, HardwareMetrics hardwareMetrics, List<string> errors)
+        int? ramUsedMb, int? ramTotalMb, HardwareMetrics hardwareMetrics, CpuTempResult cpuTemp, List<string> errors)
     {
         AppendSeriesData(netSendKbps, netReceiveKbps);
         var errorSnapshot = errors.Count == 0 ? Array.Empty<string>() : errors.ToArray();
         lock (_snapshotLock)
         {
             _latestState.CpuPercent = cpuPercent;
-            _latestState.CpuTempC = hardwareMetrics.CpuTempC;
-            _latestState.CpuTempSource = hardwareMetrics.CpuTempSource;
+            _latestState.CpuTempC = cpuTemp.TempC;
+            _latestState.CpuTempProvider = cpuTemp.Provider;
+            _latestState.CpuTempStatus = cpuTemp.Status;
+            _latestState.CpuTempHint = cpuTemp.Hint;
+            _latestState.CpuTempSource = cpuTemp.Provider == CpuTempProviderLhm
+                ? hardwareMetrics.CpuTempSource
+                : null;
+            _latestState.CpuTempDetails = cpuTemp.Provider == CpuTempProviderLhm
+                ? hardwareMetrics.CpuTempDetails
+                : null;
             _latestState.GpuUsagePercent = hardwareMetrics.GpuUsagePercent;
             _latestState.GpuTempC = hardwareMetrics.GpuTempC;
             _latestState.RamUsagePercent = ramUsagePercent;
@@ -462,6 +521,10 @@ public sealed class MetricsCollector : BackgroundService
         public int? CpuPercent;
         public float? CpuTempC;
         public string? CpuTempSource;
+        public string? CpuTempStatus;
+        public string? CpuTempProvider;
+        public string? CpuTempHint;
+        public CpuTempDiagnostics? CpuTempDetails;
         public float? GpuUsagePercent;
         public float? GpuTempC;
         public int? RamUsagePercent;

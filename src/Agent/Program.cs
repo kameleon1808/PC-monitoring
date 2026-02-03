@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Agent.Services;
+using Agent.Services.CpuTempProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +19,9 @@ builder.Services.AddSingleton(monitorSettings);
 builder.Services.AddSingleton<HardwareMonitorService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<HardwareMonitorService>());
 builder.Services.AddSingleton<RuntimeStats>();
+builder.Services.AddSingleton<LhmCpuTempProvider>();
+builder.Services.AddSingleton<WmiThermalZoneCpuTempProvider>();
+builder.Services.AddSingleton<ExternalCpuTempProvider>();
 builder.Services.AddSingleton<MetricsCollector>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MetricsCollector>());
 builder.Services.AddCors(options =>
@@ -73,6 +77,9 @@ app.MapGet("/api/sensors", (HardwareMonitorService monitor) =>
         return Results.Json(new { ok = false, error = ex.Message }, jsonOptions);
     }
 });
+
+app.MapGet("/api/cpu-temp-debug", (HardwareMonitorService monitor) =>
+    Results.Json(new { ok = true, cpuTemp = monitor.GetCpuTempDebugSnapshot() }, jsonOptions));
 
 app.MapGet("/api/stats", (RuntimeStats stats) =>
     Results.Json(stats.GetSnapshot(), jsonOptions));
@@ -239,6 +246,8 @@ public sealed class MonitorSettings
     public int HardwareIntervalMs { get; set; } = 2000;
     public bool AllowLocalNetworkCors { get; set; } = false;
     public bool AdaptiveUpdateNoClients { get; set; } = false;
+    public string CpuTempProvider { get; set; } = "lhm";
+    public bool CpuTempFallbackToWmiApprox { get; set; } = false;
 
     public void ApplyEnvironmentOverrides()
     {
@@ -248,6 +257,8 @@ public sealed class MonitorSettings
         HardwareIntervalMs = ReadIntEnv("MONITOR_HW_INTERVAL_MS", HardwareIntervalMs);
         AllowLocalNetworkCors = ReadBoolEnv("MONITOR_ALLOW_LOCAL_NETWORK_CORS", AllowLocalNetworkCors);
         AdaptiveUpdateNoClients = ReadBoolEnv("MONITOR_ADAPTIVE_NOCLIENTS", AdaptiveUpdateNoClients);
+        CpuTempProvider = ReadStringEnv("CPU_TEMP_PROVIDER", CpuTempProvider);
+        CpuTempFallbackToWmiApprox = ReadBoolEnv("CPU_TEMP_FALLBACK_TO_WMI_APPROX", CpuTempFallbackToWmiApprox);
     }
 
     public void Normalize()
@@ -271,12 +282,23 @@ public sealed class MonitorSettings
         {
             HardwareIntervalMs = 2000;
         }
+
+        var provider = string.IsNullOrWhiteSpace(CpuTempProvider)
+            ? "lhm"
+            : CpuTempProvider.Trim().ToLowerInvariant();
+        CpuTempProvider = provider is "lhm" or "wmi" or "external" ? provider : "lhm";
     }
 
     private static int ReadIntEnv(string name, int fallback)
     {
         var raw = Environment.GetEnvironmentVariable(name);
         return int.TryParse(raw, out var value) ? value : fallback;
+    }
+
+    private static string ReadStringEnv(string name, string fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrWhiteSpace(raw) ? fallback : raw.Trim();
     }
 
     private static bool ReadBoolEnv(string name, bool fallback)
