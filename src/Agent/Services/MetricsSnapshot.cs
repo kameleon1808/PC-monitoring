@@ -17,7 +17,16 @@ public sealed record MetricsSnapshot
     public int NetSendKbps { get; init; }
     public int NetReceiveKbps { get; init; }
     public MetricsSeries? Series { get; init; }
+    public ProcessUsageSnapshot[] TopProcesses { get; init; } = Array.Empty<ProcessUsageSnapshot>();
     public string[] Errors { get; init; } = Array.Empty<string>();
+}
+
+public sealed record ProcessUsageSnapshot
+{
+    public string Name { get; init; } = string.Empty;
+    public int? CpuPercent { get; init; }
+    public int? RamPercent { get; init; }
+    public int? GpuPercent { get; init; }
 }
 
 public sealed record CpuTempDiagnostics

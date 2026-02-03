@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Management;
 using System.Threading;
 using Agent.Services.CpuTempProviders;
 
@@ -24,6 +25,7 @@ public sealed class MetricsCollector : BackgroundService
     private PerformanceCounter? _netSentCounter;
     private PerformanceCounter? _netReceivedCounter;
     private PerformanceCounter? _availableMemoryCounter;
+    private readonly Dictionary<int, ProcessSample> _processSamples = new();
     private readonly int[] _netSendSeries = new int[SeriesLength];
     private readonly int[] _netRecvSeries = new int[SeriesLength];
     private readonly object _seriesLock = new();
@@ -75,6 +77,7 @@ public sealed class MetricsCollector : BackgroundService
                 NetSendKbps = _latestState.NetSendKbps,
                 NetReceiveKbps = _latestState.NetReceiveKbps,
                 Series = series,
+                TopProcesses = _latestState.TopProcesses,
                 Errors = _latestState.Errors
             };
         }
@@ -93,9 +96,10 @@ public sealed class MetricsCollector : BackgroundService
         int? ramUsedMb;
         int? ramTotalMb;
         ReadRamMetrics(errors, out ramUsagePercent, out ramUsedMb, out ramTotalMb);
+        var topProcesses = GetTopProcesses(ramTotalMb, errors);
         UpdateSnapshot(ReadCpuPercent(errors), ReadNetKbps(_netSentCounter, "Bytes Sent/sec", errors),
             ReadNetKbps(_netReceivedCounter, "Bytes Received/sec", errors), ramUsagePercent, ramUsedMb, ramTotalMb,
-            hardwareMetrics, cpuTempResult, errors);
+            topProcesses, hardwareMetrics, cpuTempResult, errors);
         initStopwatch.Stop();
         _runtimeStats.RecordTick(DateTimeOffset.UtcNow, initStopwatch.Elapsed.TotalMilliseconds);
 
@@ -111,8 +115,9 @@ public sealed class MetricsCollector : BackgroundService
                 var hardwareSnapshot = _hardwareMonitor.GetLatestMetrics();
                 var cpuTempSnapshot = await ReadCpuTempResultAsync(errors, stoppingToken);
                 ReadRamMetrics(errors, out ramUsagePercent, out ramUsedMb, out ramTotalMb);
+                topProcesses = GetTopProcesses(ramTotalMb, errors);
                 UpdateSnapshot(cpuPercent, netSendKbps, netReceiveKbps, ramUsagePercent, ramUsedMb, ramTotalMb,
-                    hardwareSnapshot, cpuTempSnapshot, errors);
+                    topProcesses, hardwareSnapshot, cpuTempSnapshot, errors);
                 stopwatch.Stop();
                 _runtimeStats.RecordTick(DateTimeOffset.UtcNow, stopwatch.Elapsed.TotalMilliseconds);
                 await Task.Delay(GetCurrentInterval(), stoppingToken);
@@ -373,6 +378,238 @@ public sealed class MetricsCollector : BackgroundService
         }
     }
 
+    private ProcessUsageSnapshot[] GetTopProcesses(int? totalMemoryMb, List<string> errors)
+    {
+        var gpuUsage = ReadGpuProcessUsage(errors);
+        Process[] processes;
+        try
+        {
+            processes = Process.GetProcesses();
+        }
+        catch (Exception ex)
+        {
+            errors.Add($"Process list unavailable: {ex.Message}");
+            return Array.Empty<ProcessUsageSnapshot>();
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var cpuCount = Environment.ProcessorCount;
+        var entries = new List<ProcessUsageSnapshot>(processes.Length);
+        var seen = new HashSet<int>();
+
+        foreach (var process in processes)
+        {
+            int pid;
+            string name;
+            TimeSpan? totalCpu = null;
+            long? workingSet = null;
+            try
+            {
+                pid = process.Id;
+                name = process.ProcessName;
+                try
+                {
+                    totalCpu = process.TotalProcessorTime;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    workingSet = process.WorkingSet64;
+                }
+                catch
+                {
+                }
+            }
+            catch
+            {
+                continue;
+            }
+            finally
+            {
+                process.Dispose();
+            }
+
+            seen.Add(pid);
+            int? cpuPercent = null;
+            if (totalCpu.HasValue && _processSamples.TryGetValue(pid, out var sample))
+            {
+                var elapsedMs = (now - sample.Timestamp).TotalMilliseconds;
+                var cpuMs = (totalCpu.Value - sample.TotalProcessorTime).TotalMilliseconds;
+                if (elapsedMs > 0 && cpuMs >= 0)
+                {
+                    var percent = cpuMs / (elapsedMs * cpuCount) * 100d;
+                    cpuPercent = (int)Math.Round(Math.Clamp(percent, 0d, 100d));
+                }
+            }
+
+            if (totalCpu.HasValue)
+            {
+                _processSamples[pid] = new ProcessSample(totalCpu.Value, now);
+            }
+
+            int? ramPercent = null;
+            if (workingSet.HasValue && totalMemoryMb.HasValue && totalMemoryMb.Value > 0)
+            {
+                var usedMb = workingSet.Value / (1024d * 1024d);
+                var percent = usedMb / totalMemoryMb.Value * 100d;
+                ramPercent = (int)Math.Round(Math.Clamp(percent, 0d, 100d));
+            }
+
+            int? gpuPercent = null;
+            if (gpuUsage.TryGetValue(pid, out var gpuValue))
+            {
+                gpuPercent = (int)Math.Round(Math.Clamp(gpuValue, 0d, 100d));
+            }
+
+            entries.Add(new ProcessUsageSnapshot
+            {
+                Name = name,
+                CpuPercent = cpuPercent,
+                RamPercent = ramPercent,
+                GpuPercent = gpuPercent
+            });
+        }
+
+        if (_processSamples.Count > seen.Count)
+        {
+            var stale = _processSamples.Keys.Where(pid => !seen.Contains(pid)).ToList();
+            foreach (var pid in stale)
+            {
+                _processSamples.Remove(pid);
+            }
+        }
+
+        return entries
+            .OrderByDescending(entry => entry.GpuPercent ?? 0)
+            .ThenByDescending(entry => entry.CpuPercent ?? 0)
+            .ThenByDescending(entry => entry.RamPercent ?? 0)
+            .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .ToArray();
+    }
+
+    private static Dictionary<int, float> ReadGpuProcessUsage(List<string> errors)
+    {
+        var usage = new Dictionary<int, float>();
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                "SELECT Name, UtilizationPercentage FROM Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine");
+            using var results = searcher.Get();
+            foreach (var entry in results)
+            {
+                if (entry is not ManagementObject obj)
+                {
+                    continue;
+                }
+
+                var name = obj["Name"] as string;
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                if (!TryParseGpuPid(name, out var pid))
+                {
+                    continue;
+                }
+
+                if (!TryReadUsagePercent(obj["UtilizationPercentage"], out var percent))
+                {
+                    continue;
+                }
+
+                if (float.IsNaN(percent) || float.IsInfinity(percent))
+                {
+                    continue;
+                }
+
+                if (percent <= 0f)
+                {
+                    continue;
+                }
+
+                if (usage.TryGetValue(pid, out var existing))
+                {
+                    usage[pid] = existing + percent;
+                }
+                else
+                {
+                    usage[pid] = percent;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errors.Add($"GPU process counters unavailable: {ex.Message}");
+        }
+
+        return usage;
+    }
+
+    private static bool TryParseGpuPid(string name, out int pid)
+    {
+        pid = 0;
+        var start = name.IndexOf("pid_", StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+        {
+            return false;
+        }
+
+        start += 4;
+        var end = start;
+        while (end < name.Length && char.IsDigit(name[end]))
+        {
+            end++;
+        }
+
+        if (end == start)
+        {
+            return false;
+        }
+
+        return int.TryParse(name[start..end], out pid);
+    }
+
+    private static bool TryReadUsagePercent(object? raw, out float percent)
+    {
+        percent = 0f;
+        if (raw == null)
+        {
+            return false;
+        }
+
+        switch (raw)
+        {
+            case uint value:
+                percent = value;
+                return true;
+            case ulong value:
+                percent = value;
+                return true;
+            case int value:
+                percent = value;
+                return true;
+            case long value:
+                percent = value;
+                return true;
+            case float value:
+                percent = value;
+                return true;
+            case double value:
+                percent = (float)value;
+                return true;
+            case string text when float.TryParse(text, out var parsed):
+                percent = parsed;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private TimeSpan GetCurrentInterval()
     {
         if (_adaptiveNoClientInterval && _runtimeStats.WebSocketClients == 0)
@@ -416,7 +653,8 @@ public sealed class MetricsCollector : BackgroundService
     }
 
     private void UpdateSnapshot(int? cpuPercent, int netSendKbps, int netReceiveKbps, int? ramUsagePercent,
-        int? ramUsedMb, int? ramTotalMb, HardwareMetrics hardwareMetrics, CpuTempResult cpuTemp, List<string> errors)
+        int? ramUsedMb, int? ramTotalMb, ProcessUsageSnapshot[] topProcesses, HardwareMetrics hardwareMetrics,
+        CpuTempResult cpuTemp, List<string> errors)
     {
         AppendSeriesData(netSendKbps, netReceiveKbps);
         var errorSnapshot = errors.Count == 0 ? Array.Empty<string>() : errors.ToArray();
@@ -440,6 +678,7 @@ public sealed class MetricsCollector : BackgroundService
             _latestState.RamTotalMb = ramTotalMb;
             _latestState.NetSendKbps = netSendKbps;
             _latestState.NetReceiveKbps = netReceiveKbps;
+            _latestState.TopProcesses = topProcesses;
             _latestState.Errors = errorSnapshot;
         }
     }
@@ -496,6 +735,8 @@ public sealed class MetricsCollector : BackgroundService
         };
     }
 
+    private readonly record struct ProcessSample(TimeSpan TotalProcessorTime, DateTimeOffset Timestamp);
+
     private sealed class NetworkCounters : IDisposable
     {
         public NetworkCounters(string name, PerformanceCounter sent, PerformanceCounter received)
@@ -532,6 +773,7 @@ public sealed class MetricsCollector : BackgroundService
         public int? RamTotalMb;
         public int NetSendKbps;
         public int NetReceiveKbps;
+        public ProcessUsageSnapshot[] TopProcesses = Array.Empty<ProcessUsageSnapshot>();
         public string[] Errors = Array.Empty<string>();
     }
 }

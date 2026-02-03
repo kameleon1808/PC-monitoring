@@ -281,6 +281,11 @@ function updateProcessTable(processes) {
     return;
   }
   if (!Array.isArray(processes) || processes.length === 0) {
+    processTableBody.innerHTML = `
+      <tr>
+        <td colspan="4">Waiting for process data...</td>
+      </tr>
+    `;
     return;
   }
   processTableBody.innerHTML = processes.slice(0, 5).map(renderProcessRow).join("");
