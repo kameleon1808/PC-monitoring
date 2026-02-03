@@ -8,69 +8,148 @@
   </head>
   <body>
     <div class="app">
-      <header class="header">
-        <div>
-          <h1>PC Monitoring Agent</h1>
-          <p class="muted">Realtime dashboard (WebSocket metrics)</p>
+      <header class="topbar">
+        <div class="title-pill">
+          <h1>System Overview</h1>
         </div>
-        <div class="status">
-          <span class="label">Last ping</span>
-          <span id="last-ping">--</span>
+        <div class="header-meta">
+          <div class="meta-card">
+            <span class="meta-label">Last ping</span>
+            <span id="last-ping">--</span>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Last update</span>
+            <span id="last-update">--</span>
+          </div>
+          <div class="meta-card status-card">
+            <span class="meta-label">Status</span>
+            <span id="connected-status" class="status-value">offline</span>
+          </div>
         </div>
       </header>
 
-      <main class="grid">
-        <section class="card">
-          <h2>CPU</h2>
-          <div class="value" id="cpu-value">-- %</div>
-          <div class="sub">Average usage</div>
-        </section>
-
-        <section class="card">
-          <h2>RAM</h2>
-          <div class="value" id="ram-percent">RAM --%</div>
-          <div class="sub" id="ram-details">N/A</div>
-        </section>
-
-        <section class="card">
-          <h2>GPU</h2>
-          <div class="value" id="gpu-value">-- %</div>
-          <div class="sub">Usage</div>
-        </section>
-
-        <section class="card">
-          <h2>NET</h2>
-          <div class="value" id="net-value">-- / -- kbps</div>
-          <div class="sub">Send: <span id="net-send">--</span> kbps</div>
-          <div class="sub">Receive: <span id="net-receive">--</span> kbps</div>
-          <div class="chart">
-            <div class="chart-label">Send (last 60s)</div>
-            <canvas id="net-send-chart" class="net-chart" width="240" height="60"></canvas>
-          </div>
-          <div class="chart">
-            <div class="chart-label">Receive (last 60s)</div>
-            <canvas id="net-recv-chart" class="net-chart" width="240" height="60"></canvas>
+      <main class="dashboard">
+        <section class="panel cpu-card">
+          <h2>CPU Usage</h2>
+          <div class="gauge gauge-cpu" id="cpu-gauge">
+            <div class="gauge-inner">
+              <div class="gauge-value" id="cpu-value">--%</div>
+            </div>
           </div>
         </section>
 
-        <section class="card">
-          <h2>Temps</h2>
-          <div class="value" id="temp-value">
-            <span id="cpu-temp">--</span> / <span id="gpu-temp">--</span>
+        <section class="panel ram-card">
+          <h2>RAM Usage</h2>
+          <div class="ram-bar">
+            <div class="ram-bar-fill" id="ram-bar-fill"></div>
           </div>
-          <div class="sub">CPU / GPU</div>
+          <div class="ram-details">
+            <span id="ram-details">N/A</span>
+            <span class="ram-percent" id="ram-percent">--%</span>
+          </div>
+        </section>
+
+        <section class="panel gpu-card">
+          <h2>GPU Usage</h2>
+          <div class="gauge gauge-gpu" id="gpu-gauge">
+            <div class="gauge-inner">
+              <div class="gauge-value" id="gpu-value">--%</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel net-card">
+          <div class="panel-header">
+            <h2>Ethernet</h2>
+            <span class="panel-sub">Last 60s</span>
+          </div>
+          <div class="net-row">
+            <div class="net-stat">
+              <span class="net-label">Send</span>
+              <span class="net-value"><span id="net-send">--</span> <span class="unit">kbps</span></span>
+              <canvas id="net-send-chart" class="net-chart" width="240" height="60"></canvas>
+            </div>
+            <div class="net-stat">
+              <span class="net-label">Receive</span>
+              <span class="net-value"><span id="net-receive">--</span> <span class="unit">kbps</span></span>
+              <canvas id="net-recv-chart" class="net-chart" width="240" height="60"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel temps-card">
+          <h2>Temperatures</h2>
+          <div class="temps">
+            <div class="thermo">
+              <div class="thermo-track">
+                <div class="thermo-fill" id="cpu-temp-fill"></div>
+              </div>
+              <div class="thermo-bulb"></div>
+              <div class="thermo-value" id="cpu-temp">--</div>
+              <div class="thermo-label">CPU</div>
+            </div>
+            <div class="thermo">
+              <div class="thermo-track">
+                <div class="thermo-fill thermo-fill-gpu" id="gpu-temp-fill"></div>
+              </div>
+              <div class="thermo-bulb"></div>
+              <div class="thermo-value" id="gpu-temp">--</div>
+              <div class="thermo-label">GPU</div>
+            </div>
+          </div>
           <div class="sub" id="cpu-temp-source" hidden></div>
           <div class="status-row">
             <span class="status-badge" id="cpu-temp-badge" hidden></span>
           </div>
           <div class="status-hint" id="cpu-temp-hint" hidden></div>
         </section>
-      </main>
 
-      <footer class="footer muted">
-        <span>Connected: <span id="connected-status">no</span></span>
-        <span>Last update: <span id="last-update">--</span></span>
-      </footer>
+        <section class="panel process-card">
+          <h2>Top 5 Processes</h2>
+          <table class="process-table">
+            <thead>
+              <tr>
+                <th>Process Name</th>
+                <th>CPU %</th>
+                <th>RAM %</th>
+                <th>GPU %</th>
+              </tr>
+            </thead>
+            <tbody id="process-table-body">
+              <tr>
+                <td>Browser</td>
+                <td><span class="usage-chip cpu" style="--value: 32">32</span></td>
+                <td><span class="usage-chip ram" style="--value: 25">25</span></td>
+                <td><span class="usage-chip gpu" style="--value: 0">0</span></td>
+              </tr>
+              <tr>
+                <td>Game</td>
+                <td><span class="usage-chip cpu" style="--value: 58">58</span></td>
+                <td><span class="usage-chip ram" style="--value: 30">30</span></td>
+                <td><span class="usage-chip gpu" style="--value: 45">45</span></td>
+              </tr>
+              <tr>
+                <td>IDE</td>
+                <td><span class="usage-chip cpu" style="--value: 22">22</span></td>
+                <td><span class="usage-chip ram" style="--value: 40">40</span></td>
+                <td><span class="usage-chip gpu" style="--value: 5">5</span></td>
+              </tr>
+              <tr>
+                <td>Discord</td>
+                <td><span class="usage-chip cpu" style="--value: 15">15</span></td>
+                <td><span class="usage-chip ram" style="--value: 12">12</span></td>
+                <td><span class="usage-chip gpu" style="--value: 2">2</span></td>
+              </tr>
+              <tr>
+                <td>Video Encoder</td>
+                <td><span class="usage-chip cpu" style="--value: 47">47</span></td>
+                <td><span class="usage-chip ram" style="--value: 18">18</span></td>
+                <td><span class="usage-chip gpu" style="--value: 68">68</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </main>
     </div>
 
     <script src="app.js"></script>
