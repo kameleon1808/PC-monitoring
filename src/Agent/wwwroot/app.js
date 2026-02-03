@@ -1,20 +1,26 @@
 const lastPingEl = document.getElementById("last-ping");
 const cpuValueEl = document.getElementById("cpu-value");
+const cpuGaugeEl = document.getElementById("cpu-gauge");
 const gpuValueEl = document.getElementById("gpu-value");
+const gpuGaugeEl = document.getElementById("gpu-gauge");
 const ramPercentEl = document.getElementById("ram-percent");
 const ramDetailsEl = document.getElementById("ram-details");
-const netValueEl = document.getElementById("net-value");
+const ramBarFillEl = document.getElementById("ram-bar-fill");
 const netSendEl = document.getElementById("net-send");
 const netReceiveEl = document.getElementById("net-receive");
 const cpuTempEl = document.getElementById("cpu-temp");
 const gpuTempEl = document.getElementById("gpu-temp");
+const cpuTempFillEl = document.getElementById("cpu-temp-fill");
+const gpuTempFillEl = document.getElementById("gpu-temp-fill");
 const cpuTempSourceEl = document.getElementById("cpu-temp-source");
 const cpuTempBadgeEl = document.getElementById("cpu-temp-badge");
 const cpuTempHintEl = document.getElementById("cpu-temp-hint");
 const netSendChart = document.getElementById("net-send-chart");
 const netRecvChart = document.getElementById("net-recv-chart");
+const netTotalChart = document.getElementById("net-total-chart");
 const connectedStatusEl = document.getElementById("connected-status");
 const lastUpdateEl = document.getElementById("last-update");
+const processTableBody = document.getElementById("process-table-body");
 const protocol = location.protocol === "https:" ? "wss" : "ws";
 const wsUrl = `${protocol}://${location.host}/ws`;
 const seriesLength = 60;
@@ -25,7 +31,7 @@ function formatPercent(value) {
   if (value === null || value === undefined) {
     return "N/A";
   }
-  return `${Math.round(value)} %`;
+  return `${Math.round(value)}%`;
 }
 
 function formatKbps(value) {
@@ -45,25 +51,52 @@ function formatTemp(value) {
 
 function formatRamPercent(value) {
   if (value === null || value === undefined) {
-    return "RAM N/A";
+    return "--%";
   }
-  return `RAM ${Math.round(value)}%`;
+  return `${Math.round(value)}%`;
 }
 
 function formatRamDetails(usedMb, totalMb) {
   if (!Number.isFinite(usedMb) || !Number.isFinite(totalMb)) {
     return "N/A";
   }
-  return `Used: ${Math.round(usedMb)} MB / ${Math.round(totalMb)} MB`;
+  const usedGb = usedMb / 1024;
+  const totalGb = totalMb / 1024;
+  return `${usedGb.toFixed(1)} GB / ${totalGb.toFixed(1)} GB`;
 }
 
-function setTempValue(element, value) {
+function clampPercent(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, value));
+}
+
+function setGaugeValue(element, value) {
+  if (!element) {
+    return;
+  }
+  element.style.setProperty("--value", clampPercent(value));
+}
+
+function setBarValue(element, value) {
+  if (!element) {
+    return;
+  }
+  element.style.width = `${clampPercent(value)}%`;
+}
+
+function setTempValue(element, value, fillEl) {
   if (!element) {
     return;
   }
   element.textContent = formatTemp(value);
   const isHot = typeof value === "number" && value > 80;
   element.classList.toggle("warning", isHot);
+  if (fillEl) {
+    const percent = clampPercent(value);
+    fillEl.style.height = `${percent}%`;
+  }
 }
 
 function getCpuTempBadge(status) {
@@ -126,7 +159,8 @@ function setConnectedStatus(isConnected) {
   if (!connectedStatusEl) {
     return;
   }
-  connectedStatusEl.textContent = isConnected ? "yes" : "no";
+  connectedStatusEl.textContent = isConnected ? "online" : "offline";
+  connectedStatusEl.classList.toggle("is-online", isConnected);
 }
 
 function setLastUpdateStamp(value) {
@@ -193,7 +227,9 @@ function drawLineChart(canvas, series, strokeStyle) {
   const stepX = series.length > 1 ? width / (series.length - 1) : width;
 
   ctx.strokeStyle = strokeStyle;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.6;
+  ctx.shadowColor = strokeStyle;
+  ctx.shadowBlur = 6;
   ctx.beginPath();
   for (let i = 0; i < series.length; i += 1) {
     const value = Math.max(0, series[i] ?? 0);
@@ -206,11 +242,48 @@ function drawLineChart(canvas, series, strokeStyle) {
     }
   }
   ctx.stroke();
+  ctx.shadowBlur = 0;
 }
 
 function drawNetworkCharts() {
-  drawLineChart(netSendChart, netSendSeries, "#5bc7ff");
-  drawLineChart(netRecvChart, netRecvSeries, "#8cf7a6");
+  drawLineChart(netSendChart, netSendSeries, "#66e7ff");
+  drawLineChart(netRecvChart, netRecvSeries, "#b07bff");
+  if (netTotalChart) {
+    const totalSeries = netSendSeries.map((value, index) => (value ?? 0) + (netRecvSeries[index] ?? 0));
+    drawLineChart(netTotalChart, totalSeries, "#7cf0ff");
+  }
+}
+
+function formatUsageValue(value) {
+  if (!Number.isFinite(value)) {
+    return "--";
+  }
+  return Math.round(value).toString();
+}
+
+function renderProcessRow(proc) {
+  const name = proc?.name || proc?.processName || "Unknown";
+  const cpu = Number(proc?.cpuPercent ?? proc?.cpu ?? proc?.cpuUsagePercent);
+  const ram = Number(proc?.ramPercent ?? proc?.ram ?? proc?.ramUsagePercent);
+  const gpu = Number(proc?.gpuPercent ?? proc?.gpu ?? proc?.gpuUsagePercent);
+  return `
+    <tr>
+      <td>${name}</td>
+      <td><span class="usage-chip cpu" style="--value: ${clampPercent(cpu)}">${formatUsageValue(cpu)}</span></td>
+      <td><span class="usage-chip ram" style="--value: ${clampPercent(ram)}">${formatUsageValue(ram)}</span></td>
+      <td><span class="usage-chip gpu" style="--value: ${clampPercent(gpu)}">${formatUsageValue(gpu)}</span></td>
+    </tr>
+  `;
+}
+
+function updateProcessTable(processes) {
+  if (!processTableBody) {
+    return;
+  }
+  if (!Array.isArray(processes) || processes.length === 0) {
+    return;
+  }
+  processTableBody.innerHTML = processes.slice(0, 5).map(renderProcessRow).join("");
 }
 
 function connect() {
@@ -228,12 +301,15 @@ function connect() {
         const data = payload.data;
         if (cpuValueEl) {
           cpuValueEl.textContent = formatPercent(data.cpuPercent);
+          setGaugeValue(cpuGaugeEl, data.cpuPercent);
         }
         if (gpuValueEl) {
           gpuValueEl.textContent = formatPercent(data.gpuUsagePercent);
+          setGaugeValue(gpuGaugeEl, data.gpuUsagePercent);
         }
         if (ramPercentEl) {
           ramPercentEl.textContent = formatRamPercent(data.ramUsagePercent);
+          setBarValue(ramBarFillEl, data.ramUsagePercent);
         }
         if (ramDetailsEl) {
           ramDetailsEl.textContent = formatRamDetails(data.ramUsedMb, data.ramTotalMb);
@@ -244,8 +320,8 @@ function connect() {
         if (netReceiveEl) {
           netReceiveEl.textContent = formatKbps(data.netReceiveKbps);
         }
-        setTempValue(cpuTempEl, data.cpuTempC);
-        setTempValue(gpuTempEl, data.gpuTempC);
+        setTempValue(cpuTempEl, data.cpuTempC, cpuTempFillEl);
+        setTempValue(gpuTempEl, data.gpuTempC, gpuTempFillEl);
         if (cpuTempSourceEl) {
           if (data.cpuTempSource) {
             cpuTempSourceEl.textContent = `source: ${data.cpuTempSource}`;
@@ -256,11 +332,7 @@ function connect() {
           }
         }
         updateCpuTempStatus(data);
-        if (netValueEl) {
-          const send = formatKbps(data.netSendKbps);
-          const receive = formatKbps(data.netReceiveKbps);
-          netValueEl.textContent = `${send} / ${receive} kbps`;
-        }
+        updateProcessTable(data?.topProcesses);
         const seriesUpdated = updateSeriesFromSnapshot(data);
         if (!seriesUpdated) {
           appendSeriesValue(netSendSeries, data.netSendKbps);
