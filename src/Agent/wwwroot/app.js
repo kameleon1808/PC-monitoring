@@ -65,6 +65,29 @@ function formatRamDetails(usedMb, totalMb) {
   return `${usedGb.toFixed(1)} GB / ${totalGb.toFixed(1)} GB`;
 }
 
+function pad2(value) {
+  return value.toString().padStart(2, "0");
+}
+
+function formatDateStamp(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return "--";
+  }
+  const day = pad2(date.getDate());
+  const month = pad2(date.getMonth() + 1);
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
+function formatTimeStamp(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return "--";
+  }
+  const hours = pad2(date.getHours());
+  const minutes = pad2(date.getMinutes());
+  return `${hours}:${minutes}`;
+}
+
 function clampPercent(value) {
   if (!Number.isFinite(value)) {
     return 0;
@@ -163,11 +186,18 @@ function setConnectedStatus(isConnected) {
   connectedStatusEl.classList.toggle("is-online", isConnected);
 }
 
+function setLastPingStamp(date) {
+  if (!lastPingEl) {
+    return;
+  }
+  lastPingEl.textContent = formatDateStamp(date);
+}
+
 function setLastUpdateStamp(value) {
   if (!lastUpdateEl) {
     return;
   }
-  lastUpdateEl.textContent = value || "--";
+  lastUpdateEl.textContent = formatTimeStamp(value);
 }
 
 function ensureSeriesLength(values, fallback) {
@@ -344,27 +374,19 @@ function connect() {
           appendSeriesValue(netRecvSeries, data.netReceiveKbps);
         }
         drawNetworkCharts();
-        const now = new Date().toISOString();
-        if (lastPingEl) {
-          lastPingEl.textContent = now;
-        }
+        const now = new Date();
+        setLastPingStamp(now);
         setLastUpdateStamp(now);
       }
     } catch {
-      if (lastPingEl) {
-        lastPingEl.textContent = "invalid message";
-      }
-      setLastUpdateStamp("--");
+      setLastPingStamp(null);
     }
   });
 
   socket.addEventListener("close", () => {
     console.log("WS closed, retrying...");
-    if (lastPingEl) {
-      lastPingEl.textContent = "disconnected";
-    }
     setConnectedStatus(false);
-    setLastUpdateStamp("--");
+    setLastPingStamp(null);
     setTimeout(connect, 2000);
   });
 
@@ -374,5 +396,9 @@ function connect() {
 }
 
 setConnectedStatus(false);
-setLastUpdateStamp("--");
+setLastPingStamp(null);
+setLastUpdateStamp(new Date());
+setInterval(() => {
+  setLastUpdateStamp(new Date());
+}, 1000);
 connect();
