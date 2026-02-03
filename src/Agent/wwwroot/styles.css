@@ -104,11 +104,10 @@ h2 {
 
 .dashboard {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.35fr) minmax(240px, 1fr);
+  grid-template-columns: 200px 200px minmax(0, 1fr);
   grid-template-areas:
-    "cpu net temps"
-    "ram net-history process"
-    "gpu net-history process";
+    "cpu gpu net"
+    "ram temps process";
   gap: 12px;
 }
 
@@ -158,10 +157,7 @@ h2 {
 
 .net-card {
   grid-area: net;
-}
-
-.net-history-card {
-  grid-area: net-history;
+  height: 209px;
 }
 
 .temps-card {
@@ -170,6 +166,11 @@ h2 {
 
 .process-card {
   grid-area: process;
+}
+
+.cpu-card,
+.gpu-card {
+  width: 200px;
 }
 
 .gauge {
@@ -445,14 +446,14 @@ h2 {
   --chip-color: #b783ff;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 900px) {
   .dashboard {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-areas:
-      "cpu net"
-      "ram net"
-      "gpu net-history"
-      "temps process";
+      "cpu gpu"
+      "net net"
+      "ram temps"
+      "process process";
   }
 
   .gauge {
