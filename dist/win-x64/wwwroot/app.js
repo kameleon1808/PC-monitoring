@@ -9,6 +9,8 @@ const netReceiveEl = document.getElementById("net-receive");
 const cpuTempEl = document.getElementById("cpu-temp");
 const gpuTempEl = document.getElementById("gpu-temp");
 const cpuTempSourceEl = document.getElementById("cpu-temp-source");
+const cpuTempBadgeEl = document.getElementById("cpu-temp-badge");
+const cpuTempHintEl = document.getElementById("cpu-temp-hint");
 const netSendChart = document.getElementById("net-send-chart");
 const netRecvChart = document.getElementById("net-recv-chart");
 const connectedStatusEl = document.getElementById("connected-status");
@@ -62,6 +64,62 @@ function setTempValue(element, value) {
   element.textContent = formatTemp(value);
   const isHot = typeof value === "number" && value > 80;
   element.classList.toggle("warning", isHot);
+}
+
+function getCpuTempBadge(status) {
+  switch (status) {
+    case "warming_up":
+      return "Warming";
+    case "blocked_or_policy":
+      return "Blocked";
+    case "wmi_approx":
+      return "Approx";
+    case "external_not_configured":
+      return "N/A";
+    case "no_sensors":
+    case "no_values":
+      return "N/A";
+    default:
+      return "N/A";
+  }
+}
+
+function getCpuTempHint(status) {
+  switch (status) {
+    case "warming_up":
+      return "CPU temp warming up.";
+    case "blocked_or_policy":
+      return "CPU temp blocked by policy.";
+    case "wmi_approx":
+      return "WMI ThermalZone is approximate.";
+    case "external_not_configured":
+      return "External provider not configured.";
+    case "no_sensors":
+      return "CPU temp sensors not found.";
+    case "no_values":
+      return "CPU temp sensors report no values.";
+    default:
+      return "CPU temp unavailable.";
+  }
+}
+
+function updateCpuTempStatus(data) {
+  if (!cpuTempBadgeEl || !cpuTempHintEl) {
+    return;
+  }
+  const status = data?.cpuTempStatus;
+  if (!status || status === "ok") {
+    cpuTempBadgeEl.textContent = "";
+    cpuTempBadgeEl.hidden = true;
+    cpuTempHintEl.textContent = "";
+    cpuTempHintEl.hidden = true;
+    return;
+  }
+  cpuTempBadgeEl.textContent = getCpuTempBadge(status);
+  cpuTempBadgeEl.hidden = false;
+  const hint = data?.cpuTempHint || getCpuTempHint(status);
+  cpuTempHintEl.textContent = hint;
+  cpuTempHintEl.hidden = !hint;
 }
 
 function setConnectedStatus(isConnected) {
@@ -197,6 +255,7 @@ function connect() {
             cpuTempSourceEl.hidden = true;
           }
         }
+        updateCpuTempStatus(data);
         if (netValueEl) {
           const send = formatKbps(data.netSendKbps);
           const receive = formatKbps(data.netReceiveKbps);
