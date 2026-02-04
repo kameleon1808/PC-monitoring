@@ -2,6 +2,8 @@
 
 Lightweight Windows monitoring agent with a real‑time web dashboard. Designed for a second‑screen view on a tablet or another device on the same LAN.
 
+![Image](https://github.com/user-attachments/assets/13480a92-94a0-42ea-88e7-f8b2d27e9831)
+
 ## Highlights
 - Realtime CPU/GPU/NET/RAM metrics over WebSocket
 - Dark, static UI with zero frontend dependencies
@@ -178,3 +180,4 @@ Base URL: `http://<host>:<port>`
 
 ## License
 TBD
+
