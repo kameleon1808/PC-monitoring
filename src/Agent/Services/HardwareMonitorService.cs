@@ -1058,7 +1058,8 @@ public sealed class HardwareMonitorService : BackgroundService
             using var results = searcher.Get();
             foreach (var entry in results)
             {
-                if (entry is not ManagementObject obj)
+                using var obj = entry as ManagementObject;
+                if (obj == null)
                 {
                     continue;
                 }
@@ -1099,7 +1100,8 @@ public sealed class HardwareMonitorService : BackgroundService
             using var results = searcher.Get();
             foreach (var entry in results)
             {
-                if (entry is not ManagementObject obj)
+                using var obj = entry as ManagementObject;
+                if (obj == null)
                 {
                     continue;
                 }
@@ -1140,7 +1142,8 @@ public sealed class HardwareMonitorService : BackgroundService
             using var results = searcher.Get();
             foreach (var entry in results)
             {
-                if (entry is not ManagementObject obj)
+                using var obj = entry as ManagementObject;
+                if (obj == null)
                 {
                     continue;
                 }

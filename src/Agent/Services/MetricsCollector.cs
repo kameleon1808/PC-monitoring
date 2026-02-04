@@ -21,11 +21,18 @@ public sealed class MetricsCollector : BackgroundService
     private readonly TimeSpan _baseInterval;
     private readonly TimeSpan _noClientInterval;
     private readonly bool _adaptiveNoClientInterval;
+    private readonly bool _processMetricsEnabled;
+    private readonly TimeSpan _processPollInterval;
+    private readonly TimeSpan _gpuProcessPollInterval;
     private PerformanceCounter? _cpuCounter;
     private PerformanceCounter? _netSentCounter;
     private PerformanceCounter? _netReceivedCounter;
     private PerformanceCounter? _availableMemoryCounter;
     private readonly Dictionary<int, ProcessSample> _processSamples = new();
+    private DateTimeOffset _lastProcessRead = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastGpuUsageRead = DateTimeOffset.MinValue;
+    private ProcessUsageSnapshot[] _cachedTopProcesses = Array.Empty<ProcessUsageSnapshot>();
+    private readonly Dictionary<int, float> _cachedGpuUsage = new();
     private readonly int[] _netSendSeries = new int[SeriesLength];
     private readonly int[] _netRecvSeries = new int[SeriesLength];
     private readonly object _seriesLock = new();
@@ -50,6 +57,9 @@ public sealed class MetricsCollector : BackgroundService
         _baseInterval = TimeSpan.FromMilliseconds(settings.MetricsIntervalMs);
         _noClientInterval = TimeSpan.FromMilliseconds(settings.MetricsIntervalNoClientsMs);
         _adaptiveNoClientInterval = settings.AdaptiveUpdateNoClients;
+        _processMetricsEnabled = settings.EnableProcessMetrics;
+        _processPollInterval = TimeSpan.FromMilliseconds(settings.ProcessMetricsIntervalMs);
+        _gpuProcessPollInterval = TimeSpan.FromMilliseconds(settings.GpuProcessIntervalMs);
         var totalMemorySnapshot = SystemMemoryInfo.GetTotalMemorySnapshot();
         _totalMemoryMb = totalMemorySnapshot.TotalMb;
         _totalMemoryError = totalMemorySnapshot.Error;
@@ -380,7 +390,17 @@ public sealed class MetricsCollector : BackgroundService
 
     private ProcessUsageSnapshot[] GetTopProcesses(int? totalMemoryMb, List<string> errors)
     {
-        var gpuUsage = ReadGpuProcessUsage(errors);
+        if (!_processMetricsEnabled)
+        {
+            return Array.Empty<ProcessUsageSnapshot>();
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastProcessRead < _processPollInterval)
+        {
+            return _cachedTopProcesses;
+        }
+
         Process[] processes;
         try
         {
@@ -389,12 +409,14 @@ public sealed class MetricsCollector : BackgroundService
         catch (Exception ex)
         {
             errors.Add($"Process list unavailable: {ex.Message}");
-            return Array.Empty<ProcessUsageSnapshot>();
+            _cachedTopProcesses = Array.Empty<ProcessUsageSnapshot>();
+            _lastProcessRead = now;
+            return _cachedTopProcesses;
         }
 
-        var now = DateTimeOffset.UtcNow;
         var cpuCount = Environment.ProcessorCount;
-        var entries = new List<ProcessUsageSnapshot>(processes.Length);
+        var gpuUsage = GetGpuProcessUsage(errors, now);
+        var entries = new List<ProcessUsageSnapshot>(5);
         var seen = new HashSet<int>();
 
         foreach (var process in processes)
@@ -464,13 +486,14 @@ public sealed class MetricsCollector : BackgroundService
                 gpuPercent = (int)Math.Round(Math.Clamp(gpuValue, 0d, 100d));
             }
 
-            entries.Add(new ProcessUsageSnapshot
+            var snapshot = new ProcessUsageSnapshot
             {
                 Name = name,
                 CpuPercent = cpuPercent,
                 RamPercent = ramPercent,
                 GpuPercent = gpuPercent
-            });
+            };
+            InsertTopProcess(entries, snapshot);
         }
 
         if (_processSamples.Count > seen.Count)
@@ -482,18 +505,27 @@ public sealed class MetricsCollector : BackgroundService
             }
         }
 
-        return entries
-            .OrderByDescending(entry => entry.GpuPercent ?? 0)
-            .ThenByDescending(entry => entry.CpuPercent ?? 0)
-            .ThenByDescending(entry => entry.RamPercent ?? 0)
-            .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
-            .Take(5)
-            .ToArray();
+        entries.Sort(CompareProcessSnapshots);
+        _cachedTopProcesses = entries.ToArray();
+        _lastProcessRead = now;
+        return _cachedTopProcesses;
     }
 
-    private static Dictionary<int, float> ReadGpuProcessUsage(List<string> errors)
+    private Dictionary<int, float> GetGpuProcessUsage(List<string> errors, DateTimeOffset now)
     {
-        var usage = new Dictionary<int, float>();
+        if (now - _lastGpuUsageRead < _gpuProcessPollInterval && _cachedGpuUsage.Count > 0)
+        {
+            return _cachedGpuUsage;
+        }
+
+        _cachedGpuUsage.Clear();
+        ReadGpuProcessUsage(_cachedGpuUsage, errors);
+        _lastGpuUsageRead = now;
+        return _cachedGpuUsage;
+    }
+
+    private static void ReadGpuProcessUsage(Dictionary<int, float> usage, List<string> errors)
+    {
         try
         {
             using var searcher = new ManagementObjectSearcher(
@@ -501,7 +533,8 @@ public sealed class MetricsCollector : BackgroundService
             using var results = searcher.Get();
             foreach (var entry in results)
             {
-                if (entry is not ManagementObject obj)
+                using var obj = entry as ManagementObject;
+                if (obj == null)
                 {
                     continue;
                 }
@@ -546,8 +579,39 @@ public sealed class MetricsCollector : BackgroundService
         {
             errors.Add($"GPU process counters unavailable: {ex.Message}");
         }
+    }
 
-        return usage;
+    private static void InsertTopProcess(List<ProcessUsageSnapshot> entries, ProcessUsageSnapshot snapshot)
+    {
+        entries.Add(snapshot);
+        entries.Sort(CompareProcessSnapshots);
+        if (entries.Count > 5)
+        {
+            entries.RemoveAt(entries.Count - 1);
+        }
+    }
+
+    private static int CompareProcessSnapshots(ProcessUsageSnapshot left, ProcessUsageSnapshot right)
+    {
+        var gpuCompare = (right.GpuPercent ?? 0).CompareTo(left.GpuPercent ?? 0);
+        if (gpuCompare != 0)
+        {
+            return gpuCompare;
+        }
+
+        var cpuCompare = (right.CpuPercent ?? 0).CompareTo(left.CpuPercent ?? 0);
+        if (cpuCompare != 0)
+        {
+            return cpuCompare;
+        }
+
+        var ramCompare = (right.RamPercent ?? 0).CompareTo(left.RamPercent ?? 0);
+        if (ramCompare != 0)
+        {
+            return ramCompare;
+        }
+
+        return StringComparer.OrdinalIgnoreCase.Compare(left.Name, right.Name);
     }
 
     private static bool TryParseGpuPid(string name, out int pid)

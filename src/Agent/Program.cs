@@ -246,6 +246,9 @@ public sealed class MonitorSettings
     public int HardwareIntervalMs { get; set; } = 2000;
     public bool AllowLocalNetworkCors { get; set; } = false;
     public bool AdaptiveUpdateNoClients { get; set; } = false;
+    public bool EnableProcessMetrics { get; set; } = true;
+    public int ProcessMetricsIntervalMs { get; set; } = 5000;
+    public int GpuProcessIntervalMs { get; set; } = 5000;
     public string CpuTempProvider { get; set; } = "lhm";
     public bool CpuTempFallbackToWmiApprox { get; set; } = false;
 
@@ -257,6 +260,9 @@ public sealed class MonitorSettings
         HardwareIntervalMs = ReadIntEnv("MONITOR_HW_INTERVAL_MS", HardwareIntervalMs);
         AllowLocalNetworkCors = ReadBoolEnv("MONITOR_ALLOW_LOCAL_NETWORK_CORS", AllowLocalNetworkCors);
         AdaptiveUpdateNoClients = ReadBoolEnv("MONITOR_ADAPTIVE_NOCLIENTS", AdaptiveUpdateNoClients);
+        EnableProcessMetrics = ReadBoolEnv("MONITOR_ENABLE_PROCESS_METRICS", EnableProcessMetrics);
+        ProcessMetricsIntervalMs = ReadIntEnv("MONITOR_PROCESS_METRICS_INTERVAL_MS", ProcessMetricsIntervalMs);
+        GpuProcessIntervalMs = ReadIntEnv("MONITOR_GPU_PROCESS_INTERVAL_MS", GpuProcessIntervalMs);
         CpuTempProvider = ReadStringEnv("CPU_TEMP_PROVIDER", CpuTempProvider);
         CpuTempFallbackToWmiApprox = ReadBoolEnv("CPU_TEMP_FALLBACK_TO_WMI_APPROX", CpuTempFallbackToWmiApprox);
     }
@@ -281,6 +287,16 @@ public sealed class MonitorSettings
         if (HardwareIntervalMs <= 0)
         {
             HardwareIntervalMs = 2000;
+        }
+
+        if (ProcessMetricsIntervalMs <= 0)
+        {
+            ProcessMetricsIntervalMs = 5000;
+        }
+
+        if (GpuProcessIntervalMs <= 0)
+        {
+            GpuProcessIntervalMs = 5000;
         }
 
         var provider = string.IsNullOrWhiteSpace(CpuTempProvider)
