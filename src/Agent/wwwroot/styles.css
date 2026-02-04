@@ -84,6 +84,22 @@ h2 {
   text-align: right;
 }
 
+.meta-card--value {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 6px 10px;
+  gap: 0;
+}
+
+.meta-card--value .meta-value {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f0f4ff;
+}
+
 .meta-value {
   color: #ffffff;
   font-weight: 700;
