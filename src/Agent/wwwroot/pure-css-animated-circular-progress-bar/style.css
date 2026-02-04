@@ -1,0 +1,81 @@
+:root {
+  --height-width: 200px;
+  --inner-height-width: calc(var(--height-width) - 55px);
+  --stroke-padding: calc((var(--height-width) - var(--inner-height-width)) / 2);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: monospace;
+}
+
+body {
+  height: 100vh;
+  background: #545454;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.skill {
+  width: var(--height-width);
+  height: var(--height-width);
+  /* background: cornflowerblue; */
+  position: relative;
+}
+
+.outer {
+  width: var(--height-width);
+  height: var(--height-width);
+  border-radius: 50%;
+  padding: var(--stroke-padding);
+  box-shadow: 6px 6px 10px -1px rgba(116, 116, 116, 0.15),
+    -6px -6px 10px -1px rgba(131, 131, 131, 0.7);
+}
+
+.inner {
+  width: var(--inner-height-width);
+  height: var(--inner-height-width);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 4px 4px 6px -1px rgba(0, 0, 0, 0.2),
+    inset -4px -4px 6px -1px rgba(103, 103, 103, 0.7),
+    -0.5px -0.5px 0px rgb(106, 106, 106), 0.5px 0.5px 0px rgba(80, 80, 80, 0.15),
+    0px 12px 10px rgba(0, 0, 0, 0.05);
+}
+
+#number {
+  color: #fbfbfb;
+  font-weight: 600;
+  font-size: 1.5rem;
+}
+
+circle {
+  fill: none;
+  stroke: url(#GradientColor);
+  stroke-width: var(--stroke-padding);
+  stroke-dasharray: 472;
+  stroke-dashoffset: 472;
+  animation: anim 1s linear forwards;
+}
+
+svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+img {
+  filter: drop-shadow(0 0 4mm rgb(166, 166, 166));
+}
+
+@keyframes anim {
+  100% {
+    /* 472-472 * 0.65 */
+    stroke-dashoffset: 150;
+  }
+}

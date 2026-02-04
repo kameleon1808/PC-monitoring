@@ -110,15 +110,17 @@ function setBarValue(element, value) {
 }
 
 function setTempValue(element, value, fillEl) {
-  if (!element) {
-    return;
-  }
-  element.textContent = formatTemp(value);
+  const formatted = formatTemp(value);
   const isHot = typeof value === "number" && value > 80;
-  element.classList.toggle("warning", isHot);
+  if (element) {
+    element.textContent = formatted;
+    element.classList.toggle("warning", isHot);
+  }
   if (fillEl) {
     const percent = clampPercent(value);
     fillEl.style.height = `${percent}%`;
+    fillEl.dataset.value = formatted;
+    fillEl.classList.toggle("warning", isHot);
   }
 }
 

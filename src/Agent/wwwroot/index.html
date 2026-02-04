@@ -32,9 +32,21 @@
         <section class="panel cpu-card">
           <h2>CPU Usage</h2>
           <div class="gauge gauge-cpu" id="cpu-gauge">
-            <div class="gauge-inner">
-              <div class="gauge-value" id="cpu-value">--%</div>
+            <div class="gauge-outer">
+              <div class="gauge-inner">
+                <div class="gauge-value" id="cpu-value">--%</div>
+              </div>
             </div>
+            <svg class="gauge-svg" viewBox="0 0 200 200" aria-hidden="true">
+              <defs>
+                <linearGradient id="cpuGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#5ed8ff" />
+                  <stop offset="100%" stop-color="#1f8cff" />
+                </linearGradient>
+              </defs>
+              <circle class="gauge-track" cx="100" cy="100" r="86" />
+              <circle class="gauge-circle" cx="100" cy="100" r="86" stroke="url(#cpuGradient)" />
+            </svg>
           </div>
         </section>
 
@@ -43,9 +55,21 @@
         <section class="panel gpu-card">
           <h2>GPU Usage</h2>
           <div class="gauge gauge-gpu" id="gpu-gauge">
-            <div class="gauge-inner">
-              <div class="gauge-value" id="gpu-value">--%</div>
+            <div class="gauge-outer">
+              <div class="gauge-inner">
+                <div class="gauge-value" id="gpu-value">--%</div>
+              </div>
             </div>
+            <svg class="gauge-svg" viewBox="0 0 200 200" aria-hidden="true">
+              <defs>
+                <linearGradient id="gpuGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#c88bff" />
+                  <stop offset="100%" stop-color="#7b4bff" />
+                </linearGradient>
+              </defs>
+              <circle class="gauge-track" cx="100" cy="100" r="86" />
+              <circle class="gauge-circle" cx="100" cy="100" r="86" stroke="url(#gpuGradient)" />
+            </svg>
           </div>
         </section>
 
@@ -86,19 +110,17 @@
           <h2>Temperatures</h2>
           <div class="temps">
             <div class="thermo">
-              <div class="thermo-track">
-                <div class="thermo-fill" id="cpu-temp-fill"></div>
+              <div class="thermo-meter">
+                <div class="thermo-mercury" id="cpu-temp-fill" data-value="--"></div>
+                <div class="thermo-graduations"></div>
               </div>
-              <div class="thermo-bulb"></div>
-              <div class="thermo-value" id="cpu-temp">--</div>
               <div class="thermo-label">CPU</div>
             </div>
-            <div class="thermo">
-              <div class="thermo-track">
-                <div class="thermo-fill thermo-fill-gpu" id="gpu-temp-fill"></div>
+            <div class="thermo thermo-gpu">
+              <div class="thermo-meter">
+                <div class="thermo-mercury" id="gpu-temp-fill" data-value="--"></div>
+                <div class="thermo-graduations"></div>
               </div>
-              <div class="thermo-bulb"></div>
-              <div class="thermo-value" id="gpu-temp">--</div>
               <div class="thermo-label">GPU</div>
             </div>
           </div>
